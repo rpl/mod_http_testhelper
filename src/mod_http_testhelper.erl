@@ -131,19 +131,20 @@ run_task_by_name(<<"pubsub_delete_node">>, Attrs) ->
 run_task_by_name(<<"pubsub_create_home_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% get from jid
+    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% TODO: get from jid
     pusub_create_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_home_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% get from jid
+    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% TODO: get from jid
     pusub_delete_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_all_node">>, Attrs) ->
     run_task_by_name(<<"pubsub_delete_home_node">>,Attrs),
     run_task_by_name(<<"pubsub_create_home_node">>,Attrs);
 run_task_by_name(Name,Attrs) ->
-    error.
+    error.   %%% TODO: return json
 
+%%% TODO:
 %%% CREATE USER
 %%%    ejabberd_auth:try_register(User, Server, Password) -> {atomic, ok|exists} | {error, not_allowed}
 %%% REMOVE USER
