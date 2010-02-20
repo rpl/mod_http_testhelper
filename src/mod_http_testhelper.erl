@@ -38,13 +38,51 @@ process([], Request) ->
 	 [{xmlcdata, io_lib:format("Called query parameters: ~p", [Request#request.q])}]
 	}]}]};
 
+process(["json"], _Request=#request{q=[{nokey,[]}]}) ->
+    {504, [], {xmlelement, "h1", [],
+               [{xmlcdata, "504 Empty Params"}]}};
+
 process(["json"], _Request) ->
-    {404, [], {xmlelement, "h1", [],
-               [{xmlcdata, "404 Not implemented"}]}};
+    Reply = execute_json_request(_Request#request.q),
+    {200, [{"Content-Type", "application/json"}], Reply};
 
 process([_LocalPath], _Request) ->
     {400, [], {xmlelement, "h1", [],
                [{xmlcdata, "400 Bad Request"}]}}.
+
+execute_json_request(Params) ->
+    ParamsDict = dict:from_list(Params),
+    TasksRaw = dict:fetch("tasks", ParamsDict),
+    Reply = case decode_tasks(TasksRaw) of
+		{ok, Tasks} -> run_tasks(Tasks);
+		{error, Msg} -> {struct,[{success, false},
+					 {error_msg, Msg}]}
+	    end,
+    encode_reply(Reply).
+
+decode_tasks(TasksRaw) ->
+    Result = (catch mochijson2:decode(TasksRaw)),
+    case Result of
+	{'EXIT', _Reason } -> {error, <<"Invalid JSON">>};
+	_ -> {ok, Result}
+    end.
+
+encode_reply(Reply) ->
+    Result = (catch mochijson2:encode(Reply)),
+    case Result of
+	{'EXIT', _Reason } ->
+	    "{\"success\": false, \"error_msg\": \"Problems encoding Reply\"}";
+	_ -> Result
+    end.
+
+run_tasks(Tasks) ->
+    Tasks.
+
+%%% CREATE USER
+%%% REMOVE USER
+%%% CREATE NODE
+%%% DELETE NODE
+%%%    mod_pubsub:delete_node(PubSubHost, ["home", Host, User], Owner).
 
 %%%----------------------------------------------------------------------
 %%% BEHAVIOUR CALLBACKS
