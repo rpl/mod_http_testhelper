@@ -33,7 +33,7 @@
 -define(ejabberd_debug, true).
 
 -behaviour(gen_mod).
-
+-compile(export_all).
 -export([
     start/2,
     stop/1,
@@ -83,7 +83,8 @@ decode_tasks(TasksRaw) ->
     Result = (catch mochijson2:decode(TasksRaw)),
     case Result of
 	{'EXIT', _Reason } -> {error, <<"Invalid JSON">>};
-	_ -> {ok, Result}
+	Result when is_list(Result) -> {ok, Result};
+	_ -> {error, <<"tasks must be an array">>}
     end.
 
 encode_reply(Reply) ->
@@ -94,12 +95,83 @@ encode_reply(Reply) ->
 	_ -> Result
     end.
 
-run_tasks(Tasks) ->
-    Tasks.
+run_tasks([Task|Rest]) ->
+    [run_tasks(Task)|run_tasks(Rest)];
+run_tasks([]) ->
+    [];
+run_tasks({struct, Attrs}=Task) ->
+    run_task(Attrs);  %%% catch for errors
+run_tasks(Task) ->
+    {struct, [{success, false}, {error_msg, <<"Task have to be a json object">>}, {task, Task}]}.
+ 
+run_task(TaskAttrs) ->
+    Attrs = dict:from_list(TaskAttrs),
+    Name = dict:fetch(<<"name">>, Attrs),
+    run_task_by_name(Name, Attrs).
+
+run_task_by_name(<<"user_create">>, Attrs) ->
+    User = dict:fetch(<<"user">>, Attrs),
+    Host = dict:fetch(<<"host">>, Attrs),
+    Password = dict:fetch(<<"password">>, Attrs),
+    create_user(User,Host,Password);
+run_task_by_name(<<"user_delete">>, Attrs) ->
+    User = dict:fetch(<<"user">>, Attrs),
+    Host = dict:fetch(<<"host">>, Attrs),
+    delete_user(User,Host);
+run_task_by_name(<<"pubsub_create_node">>, Attrs) ->
+    OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
+    PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
+    PusSubNode = dict:fetch(<<"node">>, Attrs),
+    pusub_create_node(PubSubHost,PubSubNode,OwnerJid);
+run_task_by_name(<<"pubsub_delete_node">>, Attrs) ->
+    OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
+    PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
+    PusSubNode = dict:fetch(<<"node">>, Attrs),
+    pusub_delete_node(PubSubHost,PubSubNode,OwnerJid);
+run_task_by_name(<<"pubsub_create_home_node">>, Attrs) ->
+    OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
+    PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
+    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% get from jid
+    pusub_create_node(PubSubHost,PubSubNode,OwnerJid);
+run_task_by_name(<<"pubsub_delete_home_node">>, Attrs) ->
+    OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
+    PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
+    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% get from jid
+    pusub_delete_node(PubSubHost,PubSubNode,OwnerJid);
+run_task_by_name(<<"pubsub_delete_all_node">>, Attrs) ->
+    run_task_by_name(<<"pubsub_delete_home_node">>,Attrs),
+    run_task_by_name(<<"pubsub_create_home_node">>,Attrs);
+run_task_by_name(Name,Attrs) ->
+    error.
 
 %%% CREATE USER
+%%%    ejabberd_auth:try_register(User, Server, Password) -> {atomic, ok|exists} | {error, not_allowed}
 %%% REMOVE USER
+%%%    ejabberd_auth:get_password(User, Server) -> Password | false
+%%%    ejabberd_auth:remove_user(User,Server,Password) -> ok | not_exists | not_allowed | bad_request | error
 %%% CREATE NODE
+%%%    mod_pubsub? o nodetree_default?
+%%%    nodetree_default:set_node(Record)
+%% #pubsub_node{nodeid = {"pubsub.acetone.inland",
+%%                              ["home","acetone.inland"]},
+%%                    parentid = {"pubsub.acetone.inland",["home"]},
+%%                    type = "default",
+%%                    owners = [{[],"pubsub.acetone.inland",[]}],
+%%                    options = [{node_type,default},
+%%                               {deliver_payloads,true},
+%%                               {notify_config,false},
+%%                               {notify_delete,false},
+%%                               {notify_retract,true},
+%%                               {persist_items,true},
+%%                               {max_items,10},
+%%                               {subscribe,true},
+%%                               {access_model,open},
+%%                               {roster_groups_allowed,[]},
+%%                               {publish_model,publishers},
+%%                               {max_payload_size,60000},
+%%                               {send_last_published_item,on_sub_and_presence},
+%%                               {deliver_notifications,true},
+%%                               {presence_based_delivery,false}]}
 %%% DELETE NODE
 %%%    mod_pubsub:delete_node(PubSubHost, ["home", Host, User], Owner).
 
