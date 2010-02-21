@@ -90,7 +90,7 @@ decode_tasks(TasksRaw) ->
 encode_reply(Reply) ->
     Result = (catch mochijson2:encode(Reply)),
     case Result of
-	{'EXIT', _Reason } ->
+	{'EXIT', _Reason} ->
 	    "{\"success\": false, \"error_msg\": \"Problems encoding Reply\"}";
 	_ -> Result
     end.
@@ -100,14 +100,26 @@ run_tasks([Task|Rest]) ->
 run_tasks([]) ->
     [];
 run_tasks({struct, Attrs}=Task) ->
-    run_task(Attrs);  %%% catch for errors
+    run_task(Attrs);
 run_tasks(Task) ->
     {struct, [{success, false}, {error_msg, <<"Task have to be a json object">>}, {task, Task}]}.
  
 run_task(TaskAttrs) ->
     Attrs = dict:from_list(TaskAttrs),
-    Name = dict:fetch(<<"name">>, Attrs),
-    run_task_by_name(Name, Attrs).
+    TaskName = dict:fetch(<<"name">>, Attrs),
+    TaskId = dict:fetch(<<"id">>, Attrs),
+    TaskResult = (catch run_task_by_name(TaskName, Attrs)),
+    case TaskResult of
+	{'EXIT', _Reason} -> {struct, [{success, false},  
+				       {task_id, TaskId},
+				       {error_msg, <<"Exception executing task">>}]};
+	{ok, Result} -> {struct, [{success, true},
+				  {task_id, TaskId},
+				  {task_result, TaskResult}]};
+	{error, Msg} -> {struct, [{success, false},
+				  {task_id, TaskId},
+				  {error_msg, Msg}]}
+    end.
 
 run_task_by_name(<<"user_create">>, Attrs) ->
     User = dict:fetch(<<"user">>, Attrs),
@@ -121,28 +133,49 @@ run_task_by_name(<<"user_delete">>, Attrs) ->
 run_task_by_name(<<"pubsub_create_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs),
-    pusub_create_node(PubSubHost,PubSubNode,OwnerJid);
+    PubSubNode = dict:fetch(<<"node">>, Attrs),
+    pubsub_create_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs),
-    pusub_delete_node(PubSubHost,PubSubNode,OwnerJid);
+    PubSubNode = dict:fetch(<<"node">>, Attrs),
+    pubsub_delete_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_create_home_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% TODO: get from jid
-    pusub_create_node(PubSubHost,PubSubNode,OwnerJid);
+    PubSubNode = pubsub_home_node_from_jid(OwnerJid),
+    pubsub_create_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_home_node">>, Attrs) ->
     OwnerJid = dict:fetch(<<"owner_jid">>, Attrs),
     PubSubHost = dict:fetch(<<"pubsub_host">>, Attrs),
-    PusSubNode = dict:fetch(<<"node">>, Attrs), %%% TODO: get from jid
-    pusub_delete_node(PubSubHost,PubSubNode,OwnerJid);
+    PubSubNode = pubsub_home_node_from_jid(OwnerJid),
+    pubsub_delete_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_all_node">>, Attrs) ->
     run_task_by_name(<<"pubsub_delete_home_node">>,Attrs),
     run_task_by_name(<<"pubsub_create_home_node">>,Attrs);
 run_task_by_name(Name,Attrs) ->
-    error.   %%% TODO: return json
+    {struct, [{success, false},{error_msg,<<"Unknown taskname: ",Name>>}]}.
+
+pubsub_home_node_from_jid(JidString) ->
+    Jid = jlib:string_to_jid(JidString),
+    ["home", Jid#jid.server, Jid#jid.user].
+    
+create_user(User, Server, Password) ->
+    Result = ejabberd_auth:try_register(User, Server, Password),
+    case result of
+	{atomic, ok} -> {ok, <<"user_created">>};
+	{atomic, exists} -> {ok, <<"user_exists">>};
+	{error, not_allowed} -> {error, <<"registering_not_allowed">>}
+    end.
+
+delete_user(User, Server) ->
+    {ok, <<"User Deleted">>}.
+
+pubsub_create_node(PubSubHost, PubSubNode, OwnerJid) ->
+    {ok, <<"PubSub Node Created">>}.
+
+pubsub_delete_node(PubSubHost, PubSubNode, OwnerJid) ->
+    {ok, <<"PubSub Node Deleted">>}.
 
 %%% TODO:
 %%% CREATE USER
