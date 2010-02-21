@@ -110,14 +110,17 @@ run_task(TaskAttrs) ->
     TaskId = dict:fetch(<<"id">>, Attrs),
     TaskResult = (catch run_task_by_name(TaskName, Attrs)),
     case TaskResult of
-	{'EXIT', _Reason} -> {struct, [{success, false},  
-				       {task_id, TaskId},
-				       {error_msg, <<"Exception executing task">>}]};
+	{'EXIT', Reason} -> ReasonString = lists:flatten(io_lib:format("~p", [Reason])),
+			    {struct, [{success, false},  
+				      {task_id, TaskId},
+				      {error, <<"exception_executing_task">>},
+				      {error_msg, list_to_binary(ReasonString)}]};
 	{ok, Result} -> {struct, [{success, true},
 				  {task_id, TaskId},
 				  {task_result, TaskResult}]};
-	{error, Msg} -> {struct, [{success, false},
+	{error, Type, Msg} -> {struct, [{success, false},
 				  {task_id, TaskId},
+				  {error, Type},
 				  {error_msg, Msg}]}
     end.
 
@@ -151,10 +154,14 @@ run_task_by_name(<<"pubsub_delete_home_node">>, Attrs) ->
     PubSubNode = pubsub_home_node_from_jid(OwnerJid),
     pubsub_delete_node(PubSubHost,PubSubNode,OwnerJid);
 run_task_by_name(<<"pubsub_delete_all_node">>, Attrs) ->
-    run_task_by_name(<<"pubsub_delete_home_node">>,Attrs),
-    run_task_by_name(<<"pubsub_create_home_node">>,Attrs);
-run_task_by_name(Name,Attrs) ->
-    {struct, [{success, false},{error_msg,<<"Unknown taskname: ",Name>>}]}.
+    Result1 = run_task_by_name(<<"pubsub_delete_home_node">>,Attrs),
+    Result2 = run_task_by_name(<<"pubsub_create_home_node">>,Attrs),
+    case [Result1,Result2] of
+	[{ok,_},{ok,_}] -> {ok,<<"pubsub_all_node_deleted">>};
+	_ -> {error,<<"error_deleting_all_nodes">>, <<"">>}
+    end;
+run_task_by_name(_Name,_Attrs) ->
+    {error, <<"unknown_task_name">>, <<"">>}.
 
 pubsub_home_node_from_jid(JidString) ->
     Jid = jlib:string_to_jid(JidString),
@@ -165,7 +172,8 @@ create_user(User, Server, Password) ->
     case result of
 	{atomic, ok} -> {ok, <<"user_created">>};
 	{atomic, exists} -> {ok, <<"user_exists">>};
-	{error, not_allowed} -> {error, <<"registering_not_allowed">>}
+	{error, not_allowed} -> {error, <<"registering_not_allowed">>, <<"">>};
+        _ -> {error, <<"unkown_result">>, <<"">>}
     end.
 
 delete_user(User, Server) ->
