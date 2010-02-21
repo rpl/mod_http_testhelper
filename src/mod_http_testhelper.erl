@@ -40,6 +40,8 @@
     process/2
     ]).
 
+-include("eunit/include/eunit.hrl").
+
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -include("ejabberd_http.hrl").
@@ -71,20 +73,24 @@ process([_LocalPath], _Request) ->
 
 execute_json_request(Params) ->
     ParamsDict = dict:from_list(Params),
-    TasksRaw = dict:fetch("tasks", ParamsDict),
+    TasksRaw = case (dict:find("tasks", ParamsDict)) of
+		   {ok, Value} -> Value ;
+		   error -> "[]"
+	       end,
     Reply = case decode_tasks(TasksRaw) of
 		{ok, Tasks} -> run_tasks(Tasks);
-		{error, Msg} -> {struct,[{success, false},
-					 {error_msg, Msg}]}
+		{error, Type, Msg} -> {struct,[{success, false},
+					       {error, Type},
+					       {error_msg, Msg}]}
 	    end,
     encode_reply(Reply).
 
 decode_tasks(TasksRaw) ->
     Result = (catch mochijson2:decode(TasksRaw)),
     case Result of
-	{'EXIT', _Reason } -> {error, <<"Invalid JSON">>};
+	{'EXIT', _Reason } -> {error, <<"json_invalid">>, <<"Invalid JSON">>};
 	Result when is_list(Result) -> {ok, Result};
-	_ -> {error, <<"tasks must be an array">>}
+	_ -> {error, <<"tasks_value_invalid">>, <<"tasks must be an array of task objects.">>}
     end.
 
 encode_reply(Reply) ->
@@ -98,11 +104,11 @@ encode_reply(Reply) ->
 run_tasks([Task|Rest]) ->
     [run_tasks(Task)|run_tasks(Rest)];
 run_tasks([]) ->
-    [];
+    []; %{struct, [{success, false}, {error, <<"empty_tasks">>}, {error_msg, <<"no tasks defined">>}]};
 run_tasks({struct, Attrs}=Task) ->
     run_task(Attrs);
 run_tasks(Task) ->
-    {struct, [{success, false}, {error_msg, <<"Task have to be a json object">>}, {task, Task}]}.
+    {struct, [{success, false}, {error, <<"non_object_tasks">>}, {error_msg, <<"Task have to be a json object">>}, {task, Task}]}.
  
 run_task(TaskAttrs) ->
     Attrs = dict:from_list(TaskAttrs),
