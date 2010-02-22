@@ -25,8 +25,16 @@ jsonpage_executing_jsoninvalid_queryparams_test() ->
     %%% assertMatch on Body
 
 jsonpage_executing_unkowntaskname_test() ->
-    Result = mod_http_testhelper:process(["json"], #request{q=[{"tasks", <<"[{\"name\": \"unknown\"}]">>}]}),
-    ?debugVal(Result),
+    Result = mod_http_testhelper:process(
+	       ["json"], 
+	       #request{q=[{"tasks", <<"[{\"name\": \"unknown\"},{\"id\", \":123\"}]">>}]}
+	      ),
     ?assertMatch({200, [{"Content-Type", "application/json"}], _Body}, Result).
 
+jsonpage_executing_missingtaskid_test() ->
+    Result = mod_http_testhelper:process(
+	       ["json"], 
+	       #request{q=[{"tasks", <<"[{\"name\": \"unknown\"}]">>}]}
+	      ),
+    ?assertMatch({200, [{"Content-Type", "application/json"}], _Body}, Result).
 

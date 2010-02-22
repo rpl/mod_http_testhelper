@@ -29,7 +29,7 @@
 
 -module(mod_http_testhelper).
 -author('luca.greco@alcacoop.it').
--vsn('').
+-vsn('0.1').
 -define(ejabberd_debug, true).
 
 -behaviour(gen_mod).
@@ -73,11 +73,8 @@ process([_LocalPath], _Request) ->
 
 execute_json_request(Params) ->
     ParamsDict = dict:from_list(Params),
-    TasksRaw = case (dict:find("tasks", ParamsDict)) of
-		   {ok, Value} -> Value ;
-		   error -> "[]"
-	       end,
-    Reply = case decode_tasks(TasksRaw) of
+    TasksFound = dict:find("tasks", ParamsDict),
+    Reply = case decode_tasks(TasksFound) of
 		{ok, Tasks} -> run_tasks(Tasks);
 		{error, Type, Msg} -> {struct,[{success, false},
 					       {error, Type},
@@ -85,7 +82,9 @@ execute_json_request(Params) ->
 	    end,
     encode_reply(Reply).
 
-decode_tasks(TasksRaw) ->
+decode_tasks(error) ->
+    {error, "missing_tasks", "query param tasks is mandatory"};
+decode_tasks({ok, TasksRaw}) ->
     Result = (catch mochijson2:decode(TasksRaw)),
     case Result of
 	{'EXIT', _Reason } -> {error, <<"json_invalid">>, <<"Invalid JSON">>};
@@ -105,16 +104,21 @@ run_tasks([Task|Rest]) ->
     [run_tasks(Task)|run_tasks(Rest)];
 run_tasks([]) ->
     []; %{struct, [{success, false}, {error, <<"empty_tasks">>}, {error_msg, <<"no tasks defined">>}]};
-run_tasks({struct, Attrs}=Task) ->
+run_tasks({struct, Attrs}=_Task) ->
     run_task(Attrs);
 run_tasks(Task) ->
     {struct, [{success, false}, {error, <<"non_object_tasks">>}, {error_msg, <<"Task have to be a json object">>}, {task, Task}]}.
  
 run_task(TaskAttrs) ->
     Attrs = dict:from_list(TaskAttrs),
-    TaskName = dict:fetch(<<"name">>, Attrs),
-    TaskId = dict:fetch(<<"id">>, Attrs),
-    TaskResult = (catch run_task_by_name(TaskName, Attrs)),
+    FoundTaskName = dict:find(<<"name">>, Attrs),
+    FoundTaskId = dict:find(<<"id">>, Attrs),
+    Result = case [FoundTaskName,FoundTaskId] of
+		     [ {ok, TaskName},{ok, TaskId1}] -> {TaskId1, (catch run_task_by_name(TaskName, Attrs))};
+		     [ _ , error ] -> { "no-id", {error, "missing_taskid", "Task id is mandatory"}};
+		     [ error, {ok, TaskId1} ] ->  { TaskId1, {error,"missing_taskname", "Task name is mandatory"}}
+		 end,
+    {TaskId, TaskResult} = Result,
     case TaskResult of
 	{'EXIT', Reason} -> ReasonString = lists:flatten(io_lib:format("~p", [Reason])),
 			    {struct, [{success, false},  
@@ -123,7 +127,7 @@ run_task(TaskAttrs) ->
 				      {error_msg, list_to_binary(ReasonString)}]};
 	{ok, Result} -> {struct, [{success, true},
 				  {task_id, TaskId},
-				  {task_result, TaskResult}]};
+				  {task_result, Result}]};
 	{error, Type, Msg} -> {struct, [{success, false},
 				  {task_id, TaskId},
 				  {error, Type},
@@ -175,7 +179,7 @@ pubsub_home_node_from_jid(JidString) ->
     
 create_user(User, Server, Password) ->
     Result = ejabberd_auth:try_register(User, Server, Password),
-    case result of
+    case Result of
 	{atomic, ok} -> {ok, <<"user_created">>};
 	{atomic, exists} -> {ok, <<"user_exists">>};
 	{error, not_allowed} -> {error, <<"registering_not_allowed">>, <<"">>};
