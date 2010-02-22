@@ -83,11 +83,11 @@ execute_json_request(Params) ->
     encode_reply(Reply).
 
 decode_tasks(error) ->
-    {error, "missing_tasks", "query param tasks is mandatory"};
+    {error, <<"missing_tasks">>, <<"query param tasks is mandatory">>};
 decode_tasks({ok, TasksRaw}) ->
     Result = (catch mochijson2:decode(TasksRaw)),
     case Result of
-	{'EXIT', _Reason } -> {error, <<"json_invalid">>, <<"Invalid JSON">>};
+	{'EXIT', _Reason } -> {error, <<"invalid_json">>, <<"Invalid JSON">>};
 	Result when is_list(Result) -> {ok, Result};
 	_ -> {error, <<"tasks_value_invalid">>, <<"tasks must be an array of task objects.">>}
     end.
@@ -114,10 +114,12 @@ run_task(TaskAttrs) ->
     FoundTaskName = dict:find(<<"name">>, Attrs),
     FoundTaskId = dict:find(<<"id">>, Attrs),
     Result = case [FoundTaskName,FoundTaskId] of
-		     [ {ok, TaskName},{ok, TaskId1}] -> {TaskId1, (catch run_task_by_name(TaskName, Attrs))};
-		     [ _ , error ] -> { "no-id", {error, "missing_taskid", "Task id is mandatory"}};
-		     [ error, {ok, TaskId1} ] ->  { TaskId1, {error,"missing_taskname", "Task name is mandatory"}}
-		 end,
+		 [ {ok, TaskName},{ok, TaskId1}] -> {TaskId1, (catch run_task_by_name(TaskName, Attrs))};
+		 [ _ , error ] -> { "unkown-task-id", {error, <<"missing_taskid">>, 
+					      <<"Task id is mandatory">>}};
+		 [ error, {ok, TaskId1} ] ->  { TaskId1, {error,<<"missing_taskname">>, 
+							  <<"Task name is mandatory">>}}
+	     end,
     {TaskId, TaskResult} = Result,
     case TaskResult of
 	{'EXIT', Reason} -> ReasonString = lists:flatten(io_lib:format("~p", [Reason])),
